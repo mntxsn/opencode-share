@@ -1,17 +1,37 @@
-version: '3.8'
-
+# Share server and its PostgreSQL database.
+# Settings come from .env next to this file (see .env.example).
 services:
-  # opencode-share 应用服务
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: opencode-share
+  db:
+    image: postgres:16
     restart: unless-stopped
-    ports:
-      - "3006:3006"
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:password@localhost:5432/opencode_share}
+      POSTGRES_DB: opencode_share
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d opencode_share"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${SHARE_PUBLISH_PORT:-3006}:3006"
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/opencode_share
       RUST_LOG: ${RUST_LOG:-opencode_share=info,tower_http=info}
-      PORT: 3006
-      HOST: 0.0.0.0
+      SHARE_RETENTION_DAYS: ${SHARE_RETENTION_DAYS:-30}
+      SHARE_CLEANUP_INTERVAL_MINUTES: ${SHARE_CLEANUP_INTERVAL_MINUTES:-60}
+      SHARE_SHOW_COST: ${SHARE_SHOW_COST:-false}
+      SHARE_SHOW_TOKENS: ${SHARE_SHOW_TOKENS:-false}
+      SHARE_SHOW_DIRECTORY: ${SHARE_SHOW_DIRECTORY:-name}
+      SHARE_FINAL_ANSWERS_ONLY: ${SHARE_FINAL_ANSWERS_ONLY:-true}
+
+volumes:
+  db_data:

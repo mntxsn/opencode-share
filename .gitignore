@@ -4,3 +4,5 @@
 /opencode-share.db
 /opencode-share.db-wal
 /opencode-share.db-shm
+.DS_Store
+__pycache__/

@@ -1,455 +1,156 @@
-# opencode-share Rust
+# opencode-share
 
-Rust implementation of the Opencode share service for sharing AI coding agent sessions. Built with Axum, SQLx, and PostgreSQL for maximum performance and type safety.
+A self-hosted server for sharing [opencode](https://opencode.ai) sessions within a team. You upload a session with a small script and send the link. Anyone with the link sees the conversation as a chat: your prompts, the agent's answers, tool calls and thinking.
 
-## 🚀 Features
+Since opencode v1.19.1, opencode has no built-in sharing (`/share` and `enterprise.url` are gone). This project replaces it: a Rust server (Axum, PostgreSQL) plus [scripts/share-session.py](scripts/share-session.py) to upload sessions.
 
-### Core Functionality
-- **High Performance**: Built with Rust and Axum async framework for maximum throughput
-- **Type Safety**: Compile-time checked SQL queries and strongly typed data structures
-- **Event Sourcing**: Efficient event-driven data synchronization with JSONB storage
-- **Secret-based Authentication**: Secure sharing without user account management
-- **Rich Share Page**: Interactive UI for viewing AI coding sessions
+## Features
 
-### Frontend Features
-- **🔧 Tool Call Visualization**: Beautiful cards showing bash commands, file operations, grep, etc.
-- **📦 Collapsible Reasoning Blocks**: Display AI "thinking" with expand/collapse functionality
-- **🔢 Step Markers**: Visual indicators for reasoning steps with token usage tracking
-- **📝 Split Diff Viewer**: Side-by-side file change visualization with synchronized scrolling
-- **🎨 Syntax Highlighting**: Code blocks with monospace fonts and proper styling
-- **📊 Token Usage Tracking**: Display message and session token consumption
+- Chat layout: your prompts on the right, the agent on the left, with rendered Markdown
+- **Final answers only** switch: hides the agent's intermediate messages and shows only the last answer to each prompt
+- Collapsible tool calls (command, input, output, errors) and thinking blocks
+- Side-by-side diffs for changed files
+- Light and dark mode, works on phones
+- Secrets and your home directory path are redacted before upload
+- Shares expire automatically (30 days after the last upload by default)
+- Optional author name ("Shared by …") and expiry date on each share
 
-### Production Ready
-- **Docker Support**: Multi-stage builds for optimized container images
-- **Structured Logging**: Comprehensive request/response logging with emoji indicators
-- **CORS Support**: Full cross-origin support for frontend integration
-- **Environment Configuration**: Flexible configuration via environment variables
-- **Client IP Extraction**: Proper handling of reverse proxy headers
+## Setting up the server
 
-## 📋 Architecture
-
-### Technology Stack
-
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| **Language** | Rust | 2021 edition |
-| **Web Framework** | Axum | 0.7 |
-| **Runtime** | Tokio | 1.0 (async) |
-| **Database** | PostgreSQL | (via SQLx) |
-| **ORM** | SQLx | 0.7 (compile-time checked) |
-| **Serialization** | Serde | 1.0 |
-| **Frontend** | Vanilla ES6+ JavaScript + CSS3 |
-
-### Project Structure
-
-```
-opencode-share/
-├── src/
-│   ├── main.rs              # Application entry point (84 lines)
-│   ├── models.rs            # Data models and ShareData enum (76 lines)
-│   ├── middleware.rs        # HTTP request logging middleware (119 lines)
-│   ├── core/
-│   │   ├── mod.rs           # Core module definition
-│   │   └── share.rs         # Business logic for share operations (178 lines)
-│   ├── database/
-│   │   └── mod.rs           # PostgreSQL pool setup (13 lines)
-│   └── routes/
-│       ├── mod.rs           # Route module exports
-│       ├── api.rs           # REST API endpoints (183 lines)
-│       └── share.rs         # Share page rendering (82 lines)
-├── static/
-│   ├── share.js            # Client-side renderer (617 lines)
-│   ├── share.css           # Styling (978 lines)
-│   └── favicon/manifest    # PWA assets
-├── templates/
-│   └── share.html          # HTML template
-├── migrations/
-│   └── 001_initial.sql     # Database schema
-├── Cargo.toml               # Rust dependencies
-├── Dockerfile              # Multi-stage container build
-├── docker-compose.yaml     # Orchestration with PostgreSQL
-└── README.md
-```
-
-### Design Patterns
-
-- **Layered Architecture**: Routes → Service → Data layers
-- **Repository Pattern**: `ShareService` abstracts database operations
-- **Event Sourcing**: Data stored as events in JSONB format
-- **State Pattern**: `AppState` holds shared database pool
-- **Tagged Unions**: `ShareData` enum with serde for type-safe event handling
-
-## 🛠️ Quick Start
-
-### Prerequisites
-
-- Rust 1.70+
-- PostgreSQL 12+
-- Docker (optional, for containerized deployment)
-
-### Using Docker Compose (Recommended)
+You need Docker with Docker Compose.
 
 ```bash
-# Start the service with PostgreSQL
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop the service
-docker-compose down
+git clone https://github.com/mntxsn/opencode-share.git
+cd opencode-share
+cp .env.example .env
+# Edit .env: set POSTGRES_PASSWORD, and adjust the other settings if needed
+docker compose up -d --build
 ```
 
-The server will start at `http://localhost:3006`
+The server now runs on port 3006 (`SHARE_PUBLISH_PORT` in `.env`). `curl http://localhost:3006/` returns `Hello World`.
 
-### Manual Development
+Share data lives in the Docker volume `db_data`. It survives restarts and rebuilds. `docker compose down -v` deletes it.
 
-```bash
-# Set environment variables
-export DATABASE_URL="postgres://postgres:password@localhost:5432/opencode_share"
-export RUST_LOG="opencode_share=debug,tower_http=debug"
-export PORT=3006
+| Task | Command |
+|------|---------|
+| Update to a new version | `git pull && docker compose up -d --build` |
+| Apply changed settings in `.env` | `docker compose up -d` |
+| Show logs | `docker compose logs -f app` |
+| Stop | `docker compose down` |
 
-# Run the server
-cargo run
+### HTTPS and a host name
+
+The server speaks plain HTTP. For a URL like `https://share.example.internal`, put a reverse proxy in front of it. With [Caddy](https://caddyserver.com), a `Caddyfile` like this is enough:
+
 ```
-
-### Production Build
-
-```bash
-# Build the release binary
-cargo build --release
-
-# Run the binary
-./target/release/opencode-share
-```
-
-## 📡 API Endpoints
-
-### Create Share
-
-```http
-POST /api/share
-Content-Type: application/json
-
-{
-  "sessionID": "your-session-id"
+share.example.internal {
+    tls internal
+    reverse_proxy localhost:3006
 }
 ```
 
-**Response:**
-```json
-{
-  "id": "share-id",
-  "secret": "uuid-secret",
-  "url": "http://localhost:3006/share/share-id"
-}
-```
+`tls internal` creates a certificate from Caddy's own certificate authority. Team members' machines have to trust that authority, or you use a certificate from your organization instead. If only the proxy should reach the server, publish the port on localhost only: `SHARE_PUBLISH_PORT=127.0.0.1:3006`.
 
-### Sync Share Data
+## Sharing a session
 
-```http
-POST /api/share/{shareID}/sync
-Content-Type: application/json
+You need Python 3 and `opencode` on your `PATH`. The script uses only the Python standard library.
 
-{
-  "secret": "share-secret",
-  "data": [
-    {
-      "type": "session",
-      "data": {
-        "id": "session-id",
-        "title": "Session Title",
-        "status": "active"
-      }
-    },
-    {
-      "type": "message",
-      "data": {
-        "id": "message-id",
-        "role": "assistant",
-        "content": "Response text"
-      }
-    }
-  ]
-}
-```
+1. Get the script, for example by cloning this repository, and put it on your `PATH`:
 
-### Get Share Data
+   ```bash
+   ln -s "$PWD/scripts/share-session.py" ~/.local/bin/opencode-share
+   ```
 
-```http
-GET /api/share/{shareID}/data
-```
+2. Point it at your team's server and set your name, in `~/.zshrc` or `~/.bashrc`:
 
-**Response:** Array of `ShareData` objects
+   ```bash
+   export OPENCODE_SHARE_URL=https://share.example.internal
+   export OPENCODE_SHARE_AUTHOR="Alice"
+   ```
 
-### Remove Share
+3. Share from inside your project directory:
 
-```http
-DELETE /api/share/{shareID}
-Content-Type: application/json
+   ```bash
+   opencode-share                    # the latest session of this project
+   opencode-share ses_xxx            # a specific session (opencode session list shows the IDs)
+   opencode-share --dry-run          # check what gets redacted, upload nothing
+   opencode-share ses_xxx --delete   # remove a share
+   ```
 
-{
-  "secret": "share-secret"
-}
-```
+The script prints the link and, on macOS, copies it to the clipboard. Running it again for the same session updates the share and restarts its retention period.
 
-### View Share Page
+Redaction, custom patterns and all other options are described in [scripts/README.md](scripts/README.md).
 
-```http
-GET /share/{shareID}
-```
+## Configuration
 
-## 🗄️ Database Schema
-
-### Shares Table
-
-```sql
-CREATE TABLE shares (
-    id TEXT PRIMARY KEY,
-    secret TEXT NOT NULL,
-    session_id TEXT NOT NULL,
-    data JSONB DEFAULT '[]',
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-### Indexes
-
-```sql
-CREATE INDEX idx_shares_session_id ON shares(session_id);
-CREATE INDEX idx_shares_created_at ON shares(created_at);
-CREATE INDEX idx_shares_updated_at ON shares(updated_at);
-CREATE INDEX idx_shares_data_gin ON shares USING GIN (data);
-```
-
-### ShareData Types
-
-Data is stored as a discriminated union in JSONB:
-
-- `session`: Session metadata and status
-- `message`: User/assistant messages
-- `part`: Message parts (text, code blocks, tool outputs)
-- `session_diff`: File changes made during session
-- `model`: Model information (provider, name)
-
-## ⚙️ Configuration
-
-### Environment Variables
+The server reads these environment variables. With Docker Compose, set them in `.env`.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | - |
-| `RUST_LOG` | Log level | `opencode_share=info,tower_http=info` |
-| `PORT` | Server port | `3006` |
-| `HOST` | Server host | `0.0.0.0` |
+| `POSTGRES_PASSWORD` | Database password (Compose only). Use letters, digits and hyphens | `postgres` |
+| `SHARE_PUBLISH_PORT` | Host port, or `address:port` (Compose only) | `3006` |
+| `SHARE_RETENTION_DAYS` | Delete shares this many days after their last upload. `0` keeps them forever | `30` |
+| `SHARE_CLEANUP_INTERVAL_MINUTES` | How often expired shares are deleted | `60` |
+| `SHARE_SHOW_COST` | Show the session and message cost | `false` |
+| `SHARE_SHOW_TOKENS` | Show token counts (input, output, reasoning) | `false` |
+| `SHARE_SHOW_DIRECTORY` | Working directory on the share page: `none`, `name` (project folder only) or `full` | `name` |
+| `SHARE_FINAL_ANSWERS_ONLY` | Start with "Final answers only" switched on. A viewer's own choice is remembered in their browser and takes precedence | `true` |
+| `RUST_LOG` | Log filter | `opencode_share=info,tower_http=info` |
+| `DATABASE_URL` | PostgreSQL connection URL (without Compose) | `postgres://postgres@localhost/opencode_share` |
+| `HOST` / `PORT` | Address and port the server listens on (without Compose) | `0.0.0.0` / `3006` |
 
-### Docker Compose Configuration
+Boolean variables accept `true`/`false`, `1`/`0`, `yes`/`no` and `on`/`off`. Invalid values are logged and replaced by the default. The server logs the active configuration at startup.
 
-```yaml
-services:
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: opencode_share
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+Expired shares are deleted at startup and then once per cleanup interval, so a share can stay reachable for up to one interval after its expiry date.
 
-  opencode-share:
-    build: .
-    environment:
-      DATABASE_URL: postgres://postgres:password@postgres:5432/opencode_share
-      RUST_LOG: opencode_share=debug,tower_http=debug
-      PORT: 3006
-    ports:
-      - "3006:3006"
-    depends_on:
-      - postgres
-    restart: unless-stopped
+## Privacy and security
 
-volumes:
-  postgres_data:
-```
+- **Anyone with the link can view a share.** There are no accounts. Share IDs are opencode session IDs, so treat links like passwords and run the server only on a network you trust (VPN, office network).
+- **Everything in a session is visible:** prompts, answers, thinking, commands and their full output. The script redacts common secrets and replaces your home directory with `~` before uploading, but pattern matching can't catch everything. Use `--dry-run` for sessions in which the agent read config or credential files.
+- The `SHARE_SHOW_*` settings only change the page. The data API still returns everything that was uploaded.
+- Changing or deleting a share needs its secret, which only the uploader's machine has (`~/.local/share/opencode-share/shares.json`).
+- Creating shares needs no authentication. Anyone who can reach the server can upload.
+- The page escapes all session content and sends a strict Content-Security-Policy.
 
-## 🔌 Integrating with OpenCode
+## API
 
-### Step 1: Configure OpenCode
+| Method and path | Body | Purpose |
+|-----------------|------|---------|
+| `POST /api/share` | `{"sessionID": "..."}` | Create a share. Returns `id`, `secret` and `url` |
+| `POST /api/share/{id}/sync` | `{"secret": "...", "data": [...]}` | Add or replace items |
+| `GET /api/share/{id}/data` | | All items of a share |
+| `DELETE /api/share/{id}` | `{"secret": "..."}` | Delete a share |
+| `GET /share/{id}` | | The share page |
 
-Create or update `opencode.json` in your OpenCode project:
+Items are arbitrary JSON objects. An item with a `_key` replaces the stored item with the same key, an item without one is appended. The share page understands the item types `session`, `message`, `part`, `session_diff` and `share_meta`, matching the data from `opencode export`.
 
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "enterprise": {
-    "url": "http://localhost:3006"
-  },
-  "share": "manual"
-}
-```
+Limits: 2 MB per request, 100,000 items and 64 MB per share.
 
-### Step 2: Share a Session
+## Development
 
-In the OpenCode TUI/CLI:
+Requires Rust (stable) and a PostgreSQL database. Migrations run automatically at startup.
 
 ```bash
-/share
+export DATABASE_URL=postgres://postgres:change-me@localhost:5432/opencode_share
+cargo run
 ```
 
-This will create a share and provide you with a URL to view the session.
+| Path | Contents |
+|------|----------|
+| `src/main.rs` | Startup, routing, cleanup task |
+| `src/config.rs` | Environment variables |
+| `src/core/share.rs` | Share storage and merge logic |
+| `src/routes/` | API (`api.rs`) and share page (`share.rs`) |
+| `src/middleware.rs` | Access log and security headers |
+| `templates/share.html` | Page skeleton |
+| `static/share.js`, `static/share.css` | Page rendering and styles |
+| `scripts/share-session.py` | Upload script |
+| `migrations/` | Database schema |
 
-### Step 3: Access Shared Session
+Static files and templates are read from disk at runtime. Without Docker, reloading the page is enough to see changes. With Docker, rebuild the image.
 
-Navigate to the provided URL in your browser to view the shared session.
+The integration tests in `tests/` currently don't compile, because the crate has no library target (`src/lib.rs`) for them to import.
 
-## 🎨 Customization
+## License
 
-### Customizing the Share Page
-
-The share page can be customized by modifying:
-
-- **HTML Template**: `templates/share.html`
-- **CSS Styling**: `static/share.css`
-- **JavaScript Renderer**: `static/share.js`
-
-### Adding Custom Endpoints
-
-1. Define your route in `src/routes/api.rs`:
-
-```rust
-pub fn api_routes() -> Router<AppState> {
-    Router::new()
-        .route("/api/share/:id/custom", post(custom_endpoint))
-        .with_state(app_state)
-}
-
-async fn custom_endpoint(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    Json(payload): Json<Value>,
-) -> Result<Json<Value>, AppError> {
-    // Your custom logic
-    Ok(Json(json!({ "result": "success" })))
-}
-```
-
-2. Add business logic in `src/core/share.rs`:
-
-```rust
-impl ShareService {
-    pub async fn custom_operation(
-        &self,
-        id: &str,
-    ) -> Result<ShareData, anyhow::Error> {
-        // Implementation
-    }
-}
-```
-
-### Custom Data Types
-
-Add new data types to the `ShareData` enum in `src/models.rs`:
-
-```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum ShareData {
-    #[serde(rename = "session")]
-    Session { data: Value },
-
-    #[serde(rename = "custom")]
-    Custom { data: YourCustomType },
-}
-```
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-cargo test
-
-# Run tests with database
-cargo test --features test-db
-
-# Run specific test
-cargo test test_create_share
-```
-
-## 📊 Performance Benefits
-
-- **Memory Safety**: No garbage collection pauses
-- **Zero-Cost Abstractions**: Compile-time optimizations
-- **Async Runtime**: Efficient concurrent request handling with Tokio
-- **PostgreSQL + JSONB**: Fast queries with flexible schema
-- **SQLx**: Compile-time checked SQL queries prevent runtime errors
-
-## 🔐 Security
-
-- **Secret-based Authentication**: Each share has a unique secret key
-- **SQL Injection Prevention**: Parameterized queries via SQLx
-- **Input Validation**: Type checking through Serde
-- **CORS**: Configurable cross-origin resource sharing
-
-## 📈 Migration from TypeScript
-
-This implementation maintains full API compatibility with the original TypeScript version:
-
-- ✅ Same endpoint URLs and request/response formats
-- ✅ Compatible data structures
-- ✅ Same event sourcing logic
-- ✅ Equivalent share page functionality
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📝 Development Tips
-
-### Code Organization
-
-- **Models**: Define data types in `src/models.rs`
-- **Core Logic**: Implement business logic in `src/core/share.rs`
-- **Routes**: Add API endpoints in `src/routes/api.rs`
-- **Database**: Add migrations in `migrations/`
-
-### Logging
-
-The service uses structured logging with tracing:
-
-```rust
-use tracing::{info, warn, error};
-
-info!("share_created", id = %share_id);
-warn!("sync_failed", share_id = %id, error = %err);
-```
-
-### Error Handling
-
-Use `anyhow::Error` for error propagation:
-
-```rust
-pub async fn create_share(&self, session_id: &str) -> Result<ShareInfo, anyhow::Error> {
-    let share = sqlx::query_as::<_, ShareInfo>(...)
-        .fetch_one(&self.pool)
-        .await?;
-    Ok(share)
-}
-```
-
-## 📄 License
-
-Same as the original Opencode project.
-
-## 🔗 Links
-
-- [OpenCode](https://opencode.ai)
-- [Axum Documentation](https://docs.rs/axum)
-- [SQLx Documentation](https://docs.rs/sqlx)
-- [Tokio Documentation](https://tokio.rs)
+Same as the original opencode project.
