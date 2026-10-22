@@ -516,11 +516,11 @@ class ShareRenderer {
     const { showTokens, showCost } = this.config;
 
     const meta = [
-      created && `<time datetime="${created.toISOString()}">${this.escapeHtml(created.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }))}</time>`,
+      created && `<span>Created <time datetime="${created.toISOString()}">${this.escapeHtml(created.toLocaleDateString([], { dateStyle: 'medium' }))}</time></span>`,
       directory && `<span class="session-directory" title="Project directory">${this.escapeHtml(directory)}</span>`,
       session.version && `<span>opencode v${this.escapeHtml(session.version)}</span>`,
       author && `<span class="session-author">Shared by ${this.escapeHtml(author)}</span>`,
-      expiresAt && `<span class="session-expiry" title="${this.escapeHtml(expiresAt.toLocaleString())}">Expires ${this.escapeHtml(expiresAt.toLocaleDateString([], { dateStyle: 'medium' }))}</span>`
+      expiresAt && `<span class="session-expiry">Expires ${this.escapeHtml(expiresAt.toLocaleDateString([], { dateStyle: 'medium' }))}</span>`
     ].filter(Boolean);
 
     const stats = [
@@ -619,7 +619,6 @@ class ShareRenderer {
     const content = this.getMessageContent(message);
     const role = message.role === 'user' ? 'user' : 'assistant';
     const model = message.modelID || '';
-    const created = message.time?.created ? new Date(message.time.created) : null;
     const tokens = message.tokens || {};
 
     const meta = [];
@@ -631,10 +630,6 @@ class ShareRenderer {
     }
     if (this.config.showCost && message.cost) {
       meta.push(`<span class="message-cost">${this.formatCost(message.cost)}</span>`);
-    }
-    if (created) {
-      const time = created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      meta.push(`<time class="message-time" datetime="${created.toISOString()}" title="${this.escapeHtml(created.toLocaleString())}">${this.escapeHtml(time)}</time>`);
     }
 
     return `

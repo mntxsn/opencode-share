@@ -463,17 +463,15 @@ details[open] > .disclosure::before {
   display: flex;
   flex-direction: column;
   max-width: min(80%, 640px);
-  padding: 8px 14px 6px;
+  padding: 10px 14px;
   background-color: var(--user-bg);
   border-color: var(--user-border);
   border-top-right-radius: 4px;
 }
 
-/* Time sits below the text in user bubbles */
+/* User bubbles have no visible header; the role stays for screen readers */
 .message-user .message-header {
-  order: 1;
-  justify-content: flex-end;
-  margin: 2px 0 0;
+  margin: 0;
 }
 
 .message-user .message-role {
@@ -483,10 +481,6 @@ details[open] > .disclosure::before {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
-}
-
-.message-user .message-meta {
-  font-size: 0.6875rem;
 }
 
 .message-header {
@@ -1118,7 +1112,7 @@ details[open] > .reasoning-header .reasoning-preview {
 
   .message-user {
     max-width: 88%;
-    padding: 8px 12px 6px;
+    padding: 10px 12px;
   }
 
   .session-title {
