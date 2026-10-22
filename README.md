@@ -75,9 +75,10 @@ You need Python 3 and `opencode` on your `PATH`. The script uses only the Python
    opencode-share ses_xxx            # a specific session (opencode session list shows the IDs)
    opencode-share --dry-run          # check what gets redacted, upload nothing
    opencode-share ses_xxx --delete   # remove a share
+   opencode-share --list             # your shares with their links
    ```
 
-The script prints the link and, on macOS, copies it to the clipboard. Running it again for the same session updates the share and restarts its retention period.
+The script prints two links. The **link** is for sharing and is copied to the clipboard on macOS. The **manage link** is for you: it opens the share with a **Delete share** button. Running the script again for the same session updates the share and restarts its retention period.
 
 Redaction, custom patterns and all other options are described in [scripts/README.md](scripts/README.md).
 
@@ -108,7 +109,7 @@ Expired shares are deleted at startup and then once per cleanup interval, so a s
 - **Anyone with the link can view a share.** There are no accounts. Share IDs are opencode session IDs, so treat links like passwords and run the server only on a network you trust (VPN, office network).
 - **Everything in a session is visible:** prompts, answers, thinking, commands and their full output. The script redacts common secrets and replaces your home directory with `~` before uploading, but pattern matching can't catch everything. Use `--dry-run` for sessions in which the agent read config or credential files.
 - The `SHARE_SHOW_*` settings only change the page. The data API still returns everything that was uploaded.
-- Changing or deleting a share needs its secret, which only the uploader's machine has (`~/.local/share/opencode-share/shares.json`).
+- Changing or deleting a share needs its secret, which only the uploader's machine has (`~/.local/share/opencode-share/shares.json`). The manage link contains this secret, so anyone who gets it can delete the share.
 - Creating shares needs no authentication. Anyone who can reach the server can upload.
 - The page escapes all session content and sends a strict Content-Security-Policy.
 

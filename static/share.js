@@ -2,6 +2,7 @@ class ShareRenderer {
   constructor() {
     this.shareId = document.body.dataset.shareId;
     this.config = this.readConfig();
+    this.manageSecret = this.readManageSecret();
     this.data = null;
     this.init();
   }
@@ -10,6 +11,15 @@ class ShareRenderer {
     try {
       await this.loadShareData();
       this.renderShare();
+
+      // Opening the manage link in a tab that already shows the share only changes the hash
+      window.addEventListener('hashchange', () => {
+        const secret = this.readManageSecret();
+        if (secret && secret !== this.manageSecret) {
+          this.manageSecret = secret;
+          this.renderShare();
+        }
+      });
     } catch (error) {
       console.error('Failed to load share:', error);
       this.showError();
@@ -24,6 +34,64 @@ class ShareRenderer {
     } catch (error) {
       return defaults;
     }
+  }
+
+  // The manage link carries the share secret in the URL fragment, which browsers never send to the
+  // server. Move it to session storage so it doesn't stay in the address bar, where it is easy to copy.
+  readManageSecret() {
+    const storageKey = `manage:${this.shareId}`;
+    const match = window.location.hash.match(/^#manage=([\w-]+)$/);
+    if (match) {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+      try {
+        sessionStorage.setItem(storageKey, match[1]);
+      } catch (error) {
+        // Without storage the button only lasts for this page view
+      }
+      return match[1];
+    }
+    try {
+      return sessionStorage.getItem(storageKey);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async deleteShare(button) {
+    if (!window.confirm('Delete this share? Its link will stop working for everyone. This cannot be undone.')) {
+      return;
+    }
+
+    button.disabled = true;
+    try {
+      const response = await fetch(`/api/share/${encodeURIComponent(this.shareId)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secret: this.manageSecret })
+      });
+      // 404: already deleted or expired, which is what the user wants anyway
+      if (!response.ok && response.status !== 404) {
+        throw new Error(response.status === 403
+          ? 'This manage link does not belong to this share.'
+          : `Deleting the share failed (HTTP ${response.status}).`);
+      }
+    } catch (error) {
+      button.disabled = false;
+      window.alert(error.message);
+      return;
+    }
+
+    try {
+      sessionStorage.removeItem(`manage:${this.shareId}`);
+    } catch (error) {
+      // Nothing to clean up
+    }
+    document.getElementById('app').innerHTML = `
+      <div class="error-content">
+        <h1>Share deleted</h1>
+        <p>The share has been removed. Its link no longer works.</p>
+      </div>
+    `;
   }
 
   formatDirectory(directory) {
@@ -540,6 +608,7 @@ class ShareRenderer {
             </div>
             <div class="header-actions">
               <code class="share-id" title="Session ID">${this.escapeHtml(sessionId)}</code>
+              ${this.manageSecret ? '<button class="delete-share-btn" type="button">Delete share</button>' : ''}
               <button class="copy-link-btn" type="button">Copy link</button>
             </div>
           </div>
@@ -744,7 +813,8 @@ class ShareRenderer {
     if (copyButton) {
       copyButton.addEventListener('click', async () => {
         try {
-          await navigator.clipboard.writeText(window.location.href);
+          // Never include a manage link fragment
+          await navigator.clipboard.writeText(window.location.origin + window.location.pathname);
           copyButton.textContent = 'Copied';
         } catch (error) {
           copyButton.textContent = 'Copy failed';
@@ -785,6 +855,11 @@ class ShareRenderer {
       document.querySelectorAll('.intermediate-marker').forEach(marker => {
         marker.addEventListener('click', () => setHidden(false));
       });
+    }
+
+    const deleteButton = document.querySelector('.delete-share-btn');
+    if (deleteButton) {
+      deleteButton.addEventListener('click', () => this.deleteShare(deleteButton));
     }
 
     // Add synchronized scrolling for diff views

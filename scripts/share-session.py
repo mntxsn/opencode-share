@@ -171,6 +171,10 @@ def batches(items):
         yield batch
 
 
+class ShareMissing(Exception):
+    """The share no longer exists on the server: deleted on the share page or expired."""
+
+
 def request(method, url, body=None):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method, headers={"Content-Type": "application/json"})
@@ -179,9 +183,45 @@ def request(method, url, body=None):
             raw = resp.read()
             return json.loads(raw) if raw else None
     except urllib.error.HTTPError as e:
+        if e.code == 404:
+            raise ShareMissing(url) from None
         sys.exit(f"{method} {url} failed: HTTP {e.code}")
     except urllib.error.URLError as e:
         sys.exit(f"Cannot reach {url}: {e.reason}")
+
+
+def share_exists(server, share_id):
+    """True or False, or None when the server can't be asked."""
+    try:
+        with urllib.request.urlopen(f"{server}/share/{share_id}"):
+            return True
+    except urllib.error.HTTPError as e:
+        return False if e.code == 404 else None
+    except urllib.error.URLError:
+        return None
+
+
+def share_links(server, share):
+    url = f"{server}/share/{share['id']}"
+    # The fragment is never sent to the server; the page reads it and shows a Delete button
+    return url, f"{url}#manage={share['secret']}"
+
+
+def list_shares(state, server):
+    shares = [share for key, share in state.items() if key.startswith(f"{server}|")]
+    if not shares:
+        print(f"No shares on {server}")
+        return
+    for share in shares:
+        url, manage_url = share_links(server, share)
+        print(share.get("title") or share["id"])
+        exists = share_exists(server, share["id"])
+        if exists is False:
+            print("  Deleted or expired on the server. Share the session again to recreate it.")
+        else:
+            print(f"  Link:        {url}")
+            print(f"  Manage link: {manage_url}")
+        print()
 
 
 def load_state():
@@ -203,6 +243,7 @@ def main():
     parser.add_argument("--file", help="use a JSON file from `opencode export` instead of running it")
     parser.add_argument("--server", default=DEFAULT_SERVER, help=f"share server URL (default: {DEFAULT_SERVER})")
     parser.add_argument("--delete", action="store_true", help="remove the share for SESSION_ID")
+    parser.add_argument("--list", action="store_true", help="list your shares on the server with their links")
     parser.add_argument("--no-redact", dest="redact", action="store_false",
                         default=env_flag("OPENCODE_SHARE_REDACT", True),
                         help="do not redact secrets such as API keys and passwords (env: OPENCODE_SHARE_REDACT=0)")
@@ -221,6 +262,10 @@ def main():
     server = args.server.rstrip("/")
     state = load_state()
 
+    if args.list:
+        list_shares(state, server)
+        return
+
     if args.delete:
         if not args.session_id:
             parser.error("--delete needs a SESSION_ID")
@@ -228,10 +273,13 @@ def main():
         share = state.get(key)
         if not share:
             sys.exit(f"No saved secret for {args.session_id} on {server}")
-        request("DELETE", f"{server}/api/share/{share['id']}", {"secret": share["secret"]})
+        try:
+            request("DELETE", f"{server}/api/share/{share['id']}", {"secret": share["secret"]})
+            print(f"Share removed: {share['id']}")
+        except ShareMissing:
+            print(f"Share {share['id']} was already deleted or has expired")
         del state[key]
         save_state(state)
-        print(f"Share removed: {share['id']}")
         return
 
     if args.file:
@@ -252,24 +300,42 @@ def main():
             print(f"Cleaned data written to {args.output}")
         return
 
+    title = export["info"].get("title") or session_id
     key = f"{server}|{session_id}"
-    share = state.get(key)
-    if share is None:
+
+    def new_share():
         created = request("POST", f"{server}/api/share", {"sessionID": session_id})
-        share = {"id": created["id"], "secret": created["secret"]}
+        share = {"id": created["id"], "secret": created["secret"], "title": title}
+        # Save the secret right away, so a failed upload can be retried
         state[key] = share
         save_state(state)
+        return share
 
-    for batch in batches(items):
-        request("POST", f"{server}/api/share/{share['id']}/sync", {"secret": share["secret"], "data": batch})
+    def upload(share):
+        for batch in batches(items):
+            request("POST", f"{server}/api/share/{share['id']}/sync", {"secret": share["secret"], "data": batch})
 
-    url = f"{server}/share/{share['id']}"
-    print(f"Shared \"{export['info'].get('title', session_id)}\" ({len(items)} items)")
+    share = state.get(key) or new_share()
+    try:
+        upload(share)
+    except ShareMissing:
+        # Deleted on the share page or expired: start over with a new share
+        share = new_share()
+        upload(share)
+    share["title"] = title
+    save_state(state)
+
+    url, manage_url = share_links(server, share)
+    print(f"Shared \"{title}\" ({len(items)} items)")
     print(redactor.summary())
-    print(url)
+    print()
+    print(f"Link:        {url}")
+    print(f"Manage link: {manage_url}")
+    print("             Opens the share with a Delete button. Keep it to yourself.")
     if shutil.which("pbcopy"):
         subprocess.run(["pbcopy"], input=url, text=True)
-        print("URL copied to clipboard")
+        print()
+        print("Link copied to clipboard")
 
 
 if __name__ == "__main__":

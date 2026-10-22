@@ -25,6 +25,9 @@ scripts/share-session.py --file session.json
 # Remove a share
 scripts/share-session.py ses_xxx --delete
 
+# List your shares with their links
+scripts/share-session.py --list
+
 # Show "Shared by Alice" on the share page
 scripts/share-session.py --author "Alice"
 ```
@@ -71,11 +74,20 @@ export OPENCODE_SHARE_REDACT_PATTERNS='\bacme-corp\.internal\b
 
 `opencode export --sanitize` is not used: it replaces every text, command and output, which leaves nothing worth sharing.
 
+## Links
+
+After uploading, the script prints two links:
+
+- **Link**: the one to send to others. On macOS it is copied to the clipboard.
+- **Manage link**: the same page with a **Delete share** button in the header. It contains the share's secret, so keep it to yourself. The secret sits after `#`, which browsers never send to the server. When the page opens, it removes the secret from the address bar, and "Copy link" never includes it.
+
+`--list` prints both links for all your shares on the server and marks the ones that were deleted or have expired.
+
 ## Updating a share
 
-To update a share, run the script again for the same session. It uploads the current state and replaces existing messages and parts. This also resets the server's retention period (30 days by default).
+To update a share, run the script again for the same session. It uploads the current state and replaces existing messages and parts. This also resets the server's retention period (30 days by default). If the share was deleted or has expired in the meantime, the script creates a new one with the same link.
 
-The script stores share secrets in `~/.local/share/opencode-share/shares.json`, and both updating and `--delete` need them. Without that file, you can't change or delete a share from another machine.
+The script stores share secrets in `~/.local/share/opencode-share/shares.json`. Updating, `--delete` and the manage link need them. Without that file, you can't change or delete a share from another machine.
 
 ## Limitations
 

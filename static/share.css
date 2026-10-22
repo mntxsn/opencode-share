@@ -252,6 +252,28 @@ details[open] > .disclosure::before {
   background-color: var(--surface-muted);
 }
 
+.delete-share-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--danger);
+  background-color: var(--surface);
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.delete-share-btn:hover {
+  background-color: var(--danger-soft);
+}
+
+.delete-share-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 /* Session overview */
 .content {
   max-width: var(--content-width);
