@@ -24,7 +24,12 @@ scripts/share-session.py --file session.json
 
 # Remove a share
 scripts/share-session.py ses_xxx --delete
+
+# Show "Shared by Alice" on the share page
+scripts/share-session.py --author "Alice"
 ```
+
+To set your name once, put `export OPENCODE_SHARE_AUTHOR="Alice"` in your shell profile. `--author` overrides it. Each run sends the current name, so running without a name removes it from the share.
 
 To find session IDs, run `opencode session list` inside the project.
 
@@ -39,13 +44,40 @@ export OPENCODE_SHARE_URL=https://share.example.com
 scripts/share-session.py ses_xxx
 ```
 
+## Redaction
+
+Everything in a session is visible to anyone with the URL: messages, thinking, tool commands and their full output. Before uploading, the script therefore:
+
+- replaces common secrets with `[REDACTED]`: private keys, AWS/GitHub/GitLab/OpenAI/Anthropic/Slack/Google keys, JWTs, bearer tokens, passwords in URLs, `API_KEY=...`-style assignments and quoted `"password": "..."` values
+- replaces your home directory (for example `/Users/alice`) with `~`
+
+It prints what it redacted. Pattern matching can't catch everything, so check sessions in which the agent read config or credential files.
+
+| Option | Environment variable | Effect |
+|--------|----------------------|--------|
+| `--no-redact` | `OPENCODE_SHARE_REDACT=0` | Don't redact secrets |
+| `--keep-home` | `OPENCODE_SHARE_HIDE_HOME=0` | Keep the full home directory path |
+| `--redact-pattern REGEX` (repeatable) | `OPENCODE_SHARE_REDACT_PATTERNS` (one regex per line) | Also redact your own patterns, such as internal host names or customer names |
+| `--dry-run` | | Show what would be redacted, upload nothing |
+| `--dry-run --output FILE` | | Also write the cleaned data to `FILE` for inspection |
+
+Command-line options override environment variables. Example for a team setup in your shell profile:
+
+```bash
+export OPENCODE_SHARE_URL=http://share.internal:3006
+export OPENCODE_SHARE_REDACT_PATTERNS='\bacme-corp\.internal\b
+\bcustomer-(?:alpha|beta)\b'
+```
+
+`opencode export --sanitize` is not used: it replaces every text, command and output, which leaves nothing worth sharing.
+
 ## Updating a share
 
-To update a share, run the script again for the same session. It uploads the current state and replaces existing messages and parts.
+To update a share, run the script again for the same session. It uploads the current state and replaces existing messages and parts. This also resets the server's retention period (30 days by default).
 
 The script stores share secrets in `~/.local/share/opencode-share/shares.json`, and both updating and `--delete` need them. Without that file, you can't change or delete a share from another machine.
 
 ## Limitations
 
 - Subagent (child) sessions and file diffs are not uploaded.
-- `opencode export` without a session ID only finds sessions of the current directory's project.
+- Without a session ID, the script shares the most recently updated session of the current directory's project (as listed by `opencode session list`).
