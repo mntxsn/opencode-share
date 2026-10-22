@@ -6,12 +6,15 @@
      <title>Opencode Share - {{share_id}}</title>
      <meta name="robots" content="noindex, nofollow">
      <meta name="description" content="opencode - The AI coding agent built for the terminal.">
+     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+     <link rel="icon" href="/static/favicon-96x96.png" sizes="96x96" type="image/png">
+     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
      <!-- Import diff library from local vendor -->
      <script src="/static/vendor/diff.min.js"></script>
      <script src="/static/share.js" defer></script>
      <link rel="stylesheet" href="/static/share.css">
  </head>
- <body data-share-id="{{share_id}}">
+ <body data-share-id="{{share_id}}" data-config="{{config}}">
      <div id="app">
          <div class="loading-container">
              <div class="loading-spinner"></div>

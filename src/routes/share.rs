@@ -5,11 +5,14 @@ use axum::{
     routing::get,
     Router,
 };
+use chrono::Duration;
+use serde_json::json;
 use std::fs;
 use std::path::PathBuf;
 use tracing::{error, info, warn};
 
 use crate::core::share::ShareService;
+use crate::models::Share;
 use crate::AppState;
 
 pub fn share_routes() -> Router<AppState> {
@@ -36,14 +39,14 @@ pub async fn share_page(
     
     // Verify share exists
     match share_service.get(&share_id).await {
-        Ok(Some(_share)) => {
+        Ok(Some(share)) => {
             info!(
                 "✅ Share page rendered successfully - ID: {}",
                 share_id
             );
             
             // Return HTML page using template
-            let html = generate_share_page(&share_id)?;
+            let html = generate_share_page(&share, &state)?;
             Ok(Html(html))
         }
         Ok(None) => {
@@ -63,7 +66,7 @@ pub async fn share_page(
     }
 }
 
-fn generate_share_page(share_id: &str) -> Result<String, StatusCode> {
+fn generate_share_page(share: &Share, state: &AppState) -> Result<String, StatusCode> {
     let template_path = PathBuf::from("templates/share.html");
 
     // Read HTML template file
@@ -73,17 +76,28 @@ fn generate_share_page(share_id: &str) -> Result<String, StatusCode> {
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    // HTML escape the share_id to prevent XSS
-    let escaped_share_id = share_id
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;");
+    // Display settings for share.js; inline scripts are blocked by the CSP, so pass them as an attribute
+    let retention_days = state.config.retention_days;
+    let expires_at = (retention_days > 0).then(|| share.updated_at + Duration::days(retention_days.into()));
+    let mut page_config = serde_json::to_value(&state.config.display).map_err(|e| {
+        error!("Failed to serialize page config: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    page_config["expiresAt"] = json!(expires_at);
 
-    // Replace {{share_id}} placeholder with escaped share_id
-    let html = template_content.replace("{{share_id}}", &escaped_share_id);
+    let html = template_content
+        .replace("{{config}}", &escape_html(&page_config.to_string()))
+        .replace("{{share_id}}", &escape_html(&share.id));
 
     Ok(html)
 }
 
+/// Escape for both text and attribute contexts to prevent XSS
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}

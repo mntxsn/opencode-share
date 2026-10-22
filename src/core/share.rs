@@ -181,6 +181,16 @@ impl ShareService {
         Ok(vec![])
     }
 
+    /// Delete shares whose last upload is older than `retention_days`. Returns the number deleted.
+    pub async fn delete_expired(&self, retention_days: u32) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM shares WHERE updated_at < NOW() - make_interval(days => $1)")
+            .bind(retention_days as i32)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected())
+    }
+
     /// Extract the merge key from a data item.
     /// Uses `_key` field if provided by client, otherwise generates a unique key.
     fn get_data_key(&self, data: &Value) -> String {
