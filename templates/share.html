@@ -6,15 +6,12 @@
      <title>Opencode Share - {{share_id}}</title>
      <meta name="robots" content="noindex, nofollow">
      <meta name="description" content="opencode - The AI coding agent built for the terminal.">
-     <script>
-         window.SHARE_ID = "{{share_id}}";
-     </script>
      <!-- Import diff library from local vendor -->
      <script src="/static/vendor/diff.min.js"></script>
      <script src="/static/share.js" defer></script>
      <link rel="stylesheet" href="/static/share.css">
  </head>
- <body>
+ <body data-share-id="{{share_id}}">
      <div id="app">
          <div class="loading-container">
              <div class="loading-spinner"></div>

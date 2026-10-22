@@ -1,6 +1,6 @@
 class ShareRenderer {
   constructor() {
-    this.shareId = window.SHARE_ID;
+    this.shareId = document.body.dataset.shareId;
     this.data = null;
     this.init();
   }
@@ -16,7 +16,7 @@ class ShareRenderer {
   }
 
   async loadShareData() {
-    const response = await fetch(`/api/share/${this.shareId}/data`);
+    const response = await fetch(`/api/share/${encodeURIComponent(this.shareId)}/data`);
     if (!response.ok) {
       if (response.status === 404) {
         throw new Error('Share not found');
@@ -77,16 +77,16 @@ class ShareRenderer {
   getMessageContent(message) {
     // Check if message has content directly or in parts
     if (message.content) {
-      return message.content;
+      return this.escapeHtml(message.content);
     }
-    
+
     // Get all parts for this message
     const parts = this.data.parts[message.id] || [];
     if (parts.length === 0) {
       // No parts, provide basic message info
-      const role = message.role || 'unknown';
-      const model = message.modelID || 'unknown model';
-      const finish = message.finish || 'unknown';
+      const role = this.escapeHtml(message.role || 'unknown');
+      const model = this.escapeHtml(message.modelID || 'unknown model');
+      const finish = this.escapeHtml(message.finish || 'unknown');
       return `[${role} message via ${model} - ${finish}]`;
     }
     
@@ -114,7 +114,7 @@ class ShareRenderer {
       switch (part.type) {
         case 'text':
           if (part.text) {
-            content += part.text + '\n\n';
+            content += this.escapeHtml(part.text) + '\n\n';
           }
           break;
 
@@ -129,7 +129,7 @@ class ShareRenderer {
              content += `<span class="reasoning-icon">🤔</span>`;
              content += `<span class="reasoning-title">Thinking Process</span>`;
              if (isLongReasoning) {
-               content += `<button class="reasoning-toggle" onclick="toggleReasoning('${reasoningId}')">`;
+               content += `<button class="reasoning-toggle" data-reasoning-id="${reasoningId}">`;
                content += `<span class="show-text">Show details</span>`;
                content += `<span class="hide-text" style="display:none">Hide</span>`;
                content += `</button>`;
@@ -181,7 +181,7 @@ class ShareRenderer {
        }
      }
     
-    return content.trim() || `[${message.role || 'unknown'} message - no content]`;
+    return content.trim() || `[${this.escapeHtml(message.role || 'unknown')} message - no content]`;
   }
   
   // Format tool call information with enhanced styling
@@ -278,7 +278,7 @@ class ShareRenderer {
     if (state.metadata && state.metadata.exit !== undefined) {
       const exitCode = state.metadata.exit;
       const exitClass = exitCode === 0 ? 'exit-success' : 'exit-error';
-      metadata.push(`<span class="${exitClass}">Exit: ${exitCode}</span>`);
+      metadata.push(`<span class="${exitClass}">Exit: ${this.escapeHtml(exitCode)}</span>`);
     }
 
     if (state.time) {
@@ -304,17 +304,17 @@ class ShareRenderer {
   formatTokenUsage(tokens) {
     const parts = [];
     
-    if (tokens.input) parts.push(`📥 Input: ${tokens.input}`);
-    if (tokens.output) parts.push(`📤 Output: ${tokens.output}`);
-    if (tokens.reasoning) parts.push(`🧠 Reasoning: ${tokens.reasoning}`);
-    
+    if (tokens.input) parts.push(`📥 Input: ${this.escapeHtml(tokens.input)}`);
+    if (tokens.output) parts.push(`📤 Output: ${this.escapeHtml(tokens.output)}`);
+    if (tokens.reasoning) parts.push(`🧠 Reasoning: ${this.escapeHtml(tokens.reasoning)}`);
+
     if (tokens.cache) {
-      if (tokens.cache.read) parts.push(`💾 Cache Read: ${tokens.cache.read}`);
-      if (tokens.cache.write) parts.push(`💾 Cache Write: ${tokens.cache.write}`);
+      if (tokens.cache.read) parts.push(`💾 Cache Read: ${this.escapeHtml(tokens.cache.read)}`);
+      if (tokens.cache.write) parts.push(`💾 Cache Write: ${this.escapeHtml(tokens.cache.write)}`);
     }
-    
+
     if (tokens.cost) {
-      parts.push(`💰 Cost: $${tokens.cost.toFixed(6)}`);
+      parts.push(`💰 Cost: $${Number(tokens.cost).toFixed(6)}`);
     }
     
     return parts.length > 0 ? `(${parts.join(', ')})` : '';
@@ -344,25 +344,17 @@ class ShareRenderer {
           <div class="header-left">
             <h1>Opencode Share</h1>
           </div>
-          <div class="header-actions">
-            <button onclick="window.open('https://github.com/sst/opencode', '_blank')">
-              GitHub
-            </button>
-            <button onclick="window.open('https://opencode.ai/discord', '_blank')">
-              Discord
-            </button>
-          </div>
         </header>
 
         <div class="content">
           <div class="session-info">
             <div class="session-title">${this.escapeHtml(session.title)}</div>
             <div class="session-meta">
-              <span>v${session.version || '1.0.0'}</span>
+              <span>v${this.escapeHtml(session.version || '1.0.0')}</span>
               <span>•</span>
               <span>${new Date(session.time.created).toLocaleDateString()}</span>
               ${session.directory ? `<span>•</span><span>${this.escapeHtml(session.directory)}</span>` : ''}
-              ${session.summary && session.summary.files ? `<span>•</span><span>${session.summary.files} files</span>` : ''}
+              ${session.summary && session.summary.files ? `<span>•</span><span>${this.escapeHtml(session.summary.files)} files</span>` : ''}
             </div>
           </div>
 
@@ -399,28 +391,25 @@ class ShareRenderer {
     const timestamp = message.time ? new Date(message.time.created).toLocaleString() : '';
     const tokens = message.tokens || {};
 
-    // Check if content contains HTML (tool calls, reasoning blocks, step markers)
-    const hasHtml = content.includes('<div class="') || content.includes('<div class="reasoning-block"') || content.includes('<div class="step-marker"');
-
-    // Sanitize HTML if present, otherwise escape plain text
-    const safeContent = hasHtml ? this.sanitizeHtml(content) : this.escapeHtml(content);
+    // Content is already escaped; any markup in it was generated by us (tool calls, reasoning blocks, step markers)
+    const hasHtml = content.includes('<div class="');
 
     return `
       <div class="message">
         <div class="message-header">
           <div class="message-role">${role === 'user' ? '👤 User' : '🤖 Assistant'}</div>
           <div class="message-meta">
-            ${model ? `<span class="message-model">${model}</span>` : ''}
+            ${model ? `<span class="message-model">${this.escapeHtml(model)}</span>` : ''}
             <span class="message-time">${timestamp}</span>
             ${tokens.input || tokens.output ? `
               <span class="message-tokens">
-                ${tokens.input ? `📥 ${tokens.input}` : ''}
-                ${tokens.output ? `📤 ${tokens.output}` : ''}
+                ${tokens.input ? `📥 ${this.escapeHtml(tokens.input)}` : ''}
+                ${tokens.output ? `📤 ${this.escapeHtml(tokens.output)}` : ''}
               </span>
             ` : ''}
           </div>
         </div>
-        <div class="message-content ${hasHtml ? 'has-rich-content' : ''}">${safeContent}</div>
+        <div class="message-content ${hasHtml ? 'has-rich-content' : ''}">${content}</div>
       </div>
     `;
   }
@@ -552,50 +541,14 @@ class ShareRenderer {
     return { beforeHtml, afterHtml, addedCount, removedCount };
   }
 
-  // Create safe HTML content - sanitize to prevent XSS
-  sanitizeHtml(unsafeHtml) {
-    const div = document.createElement('div');
-    div.innerHTML = unsafeHtml;
-
-    // Remove dangerous elements and attributes
-    const dangerousTags = ['script', 'iframe', 'object', 'embed', 'form', 'input', 'button'];
-    const dangerousAttrs = ['onclick', 'onload', 'onerror', 'onmouseover', 'onfocus', 'onblur', 'onchange'];
-
-    // Remove script tags and their content
-    const scripts = div.querySelectorAll('script');
-    scripts.forEach(script => script.remove());
-
-    // Remove other dangerous tags
-    dangerousTags.forEach(tag => {
-      const elements = div.querySelectorAll(tag);
-      elements.forEach(el => el.remove());
-    });
-
-    // Remove dangerous attributes from all elements
-    const allElements = div.querySelectorAll('*');
-    allElements.forEach(el => {
-      dangerousAttrs.forEach(attr => {
-        el.removeAttribute(attr);
-      });
-    });
-
-    // Also check inline event handlers in style attribute
-    allElements.forEach(el => {
-      if (el.getAttribute('style')) {
-        const style = el.getAttribute('style');
-        if (style && style.includes('expression(')) {
-          el.removeAttribute('style');
-        }
-      }
-    });
-
-    return div.innerHTML;
-  }
-
+  // Escape for both text and attribute contexts (quotes included)
   escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return String(text ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   attachEventListeners() {
@@ -617,6 +570,12 @@ class ShareRenderer {
           toolOutput.classList.toggle('expanded');
         }
       });
+    });
+
+    // Add event listeners for reasoning toggles (no inline handlers, CSP blocks them)
+    const reasoningButtons = document.querySelectorAll('.reasoning-toggle');
+    reasoningButtons.forEach(button => {
+      button.addEventListener('click', () => toggleReasoning(button.dataset.reasoningId));
     });
 
     // Add synchronized scrolling for diff views

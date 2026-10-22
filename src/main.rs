@@ -1,5 +1,5 @@
 use axum::{
-    middleware::from_fn_with_state,
+    middleware::{from_fn, from_fn_with_state},
     routing::get,
     Router,
 };
@@ -14,7 +14,7 @@ mod models;
 mod routes;
 
 use routes::{api_routes, share_routes};
-use middleware::access_log_middleware;
+use middleware::{access_log_middleware, security_headers_middleware};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -24,13 +24,13 @@ pub struct AppState {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Load environment variables
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
     
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "opencode_share=debug,tower_http=debug".into()),
+                .unwrap_or_else(|_| "opencode_share=info,tower_http=info".into()),
         )
         .init();
 
@@ -38,7 +38,7 @@ async fn main() -> anyhow::Result<()> {
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres@localhost/opencode_share".to_string());
     
-    println!("Using database: {}", database_url);
+    println!("Using database: {}", redact_password(&database_url));
     let pool = PgPool::connect(&database_url).await?;
     
     // Run migrations
@@ -61,6 +61,8 @@ async fn main() -> anyhow::Result<()> {
         .nest_service("/static", tower_http::services::ServeDir::new("static"))
         // Root route
         .route("/", get(index))
+        // Security headers
+        .layer(from_fn(security_headers_middleware))
         // CORS
         .layer(
             CorsLayer::new()
@@ -81,4 +83,23 @@ async fn main() -> anyhow::Result<()> {
 async fn index() -> &'static str {
     info!("🏠 Home page requested");
     "Hello World"
+}
+
+/// Hide the password in a connection URL like postgres://user:password@host/db
+fn redact_password(url: &str) -> String {
+    match (url.find("://"), url.rfind('@')) {
+        (Some(scheme_end), Some(at)) if at > scheme_end => {
+            let credentials = &url[scheme_end + 3..at];
+            match credentials.find(':') {
+                Some(colon) => format!(
+                    "{}{}:***{}",
+                    &url[..scheme_end + 3],
+                    &credentials[..colon],
+                    &url[at..]
+                ),
+                None => url.to_string(),
+            }
+        }
+        _ => url.to_string(),
+    }
 }

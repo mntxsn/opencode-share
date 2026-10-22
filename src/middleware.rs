@@ -1,6 +1,6 @@
 use axum::{
     extract::{Request, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     middleware::Next,
     response::Response,
 };
@@ -71,23 +71,43 @@ pub async fn access_log_middleware(
             log_icon,
             method,
             uri,
-            status_code,
+            client_ip,
             duration,
-            client_ip
+            status_code
         ),
         "error" => tracing::error!(
             "{} {} {} - IP: {} - Duration: {:?} - Status: {}",
             log_icon,
             method,
             uri,
-            status_code,
+            client_ip,
             duration,
-            client_ip
+            status_code
         ),
         _ => {}
     }
     
     Ok(response)
+}
+
+/// Content-Security-Policy for all responses. The share page renders untrusted
+/// session content, so scripts may only come from this origin.
+const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; \
+    style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; \
+    base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+
+/// Adds browser security headers to every response
+pub async fn security_headers_middleware(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(CONTENT_SECURITY_POLICY),
+    );
+    headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
+    response
 }
 
 /// 从请求头中提取客户端IP地址

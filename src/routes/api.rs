@@ -6,10 +6,10 @@ use axum::{
     Router,
 };
 use serde_json::Value;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 use crate::{
-    core::share::ShareService,
+    core::share::{ShareError, ShareService},
     models::{CreateShareRequest, CreateShareResponse, RemoveShareRequest, SyncShareRequest},
     AppState,
 };
@@ -77,7 +77,7 @@ pub async fn create_share(
                  "❌ Failed to create share - SessionID: {} - Error: {}",
                  session_id, e
             );
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(error_status(&e))
         }
     }
 }
@@ -110,7 +110,7 @@ pub async fn sync_share(
                  "❌ Failed to sync share - ID: {} - Error: {}",
                  share_id, e
             );
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(error_status(&e))
         }
     }
 }
@@ -134,7 +134,6 @@ pub async fn get_share_data(
                 "✅ Retrieved share data - ID: {} - Data items: {}",
                 share_id, data.len()
             );
-            debug!("Share {} data preview: {:?}", share_id, data);
             Ok(Json(data))
         }
         Err(e) => {
@@ -142,7 +141,7 @@ pub async fn get_share_data(
                  "❌ Failed to get share data - ID: {} - Error: {}",
                  share_id, e
             );
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(error_status(&e))
         }
     }
 }
@@ -174,8 +173,18 @@ pub async fn remove_share(
                  "❌ Failed to remove share - ID: {} - Error: {}",
                  share_id, e
             );
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(error_status(&e))
         }
     }
 }
 
+fn error_status(e: &ShareError) -> StatusCode {
+    match e {
+        ShareError::InvalidId => StatusCode::BAD_REQUEST,
+        ShareError::AlreadyExists(_) => StatusCode::CONFLICT,
+        ShareError::NotFound(_) => StatusCode::NOT_FOUND,
+        ShareError::InvalidSecret(_) => StatusCode::FORBIDDEN,
+        ShareError::TooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
+        ShareError::Database(_) | ShareError::Json(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}

@@ -138,8 +138,8 @@ async fn test_create_share_duplicate() {
         .await
         .expect("Failed to get response");
 
-    // Should return internal server error for duplicate
-    assert_eq!(response2.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    // Should return conflict for duplicate
+    assert_eq!(response2.status(), StatusCode::CONFLICT);
 }
 
 #[tokio::test]
@@ -265,7 +265,7 @@ async fn test_sync_share_with_invalid_secret() {
         .await
         .expect("Failed to get response");
 
-    assert_eq!(sync_response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(sync_response.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]

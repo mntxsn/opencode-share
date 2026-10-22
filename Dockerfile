@@ -50,5 +50,9 @@ EXPOSE 3006
 # Set environment variables
 ENV RUST_LOG=opencode_share=info,tower_http=info
 
+# Run as unprivileged user
+RUN useradd --system --no-create-home --uid 10001 app
+USER app
+
 # Run the application
 CMD ["./opencode-share"]
