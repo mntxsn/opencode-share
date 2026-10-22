@@ -87,7 +87,8 @@ fn generate_share_page(share: &Share, state: &AppState) -> Result<String, Status
 
     let html = template_content
         .replace("{{config}}", &escape_html(&page_config.to_string()))
-        .replace("{{share_id}}", &escape_html(&share.id));
+        .replace("{{share_id}}", &escape_html(&share.id))
+        .replace("{{asset_version}}", &state.asset_version);
 
     Ok(html)
 }

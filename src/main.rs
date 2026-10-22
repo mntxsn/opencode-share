@@ -5,7 +5,11 @@ use axum::{
     Router,
 };
 use sqlx::PgPool;
-use std::sync::Arc;
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 use tower::Layer;
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -30,6 +34,8 @@ use middleware::{access_log_middleware, security_headers_middleware};
 pub struct AppState {
     pub db: PgPool,
     pub config: Arc<Config>,
+    /// Appended to asset URLs so browsers fetch changed files instead of a cached copy
+    pub asset_version: Arc<str>,
 }
 
 #[tokio::main]
@@ -65,7 +71,11 @@ async fn main() -> anyhow::Result<()> {
         spawn_cleanup_task(pool.clone(), config.clone());
     }
 
-    let app_state = AppState { db: pool, config: config.clone() };
+    let app_state = AppState {
+        db: pool,
+        config: config.clone(),
+        asset_version: asset_version().into(),
+    };
 
     // Build the application
     let app = Router::new()
@@ -117,6 +127,16 @@ fn spawn_cleanup_task(pool: PgPool, config: Arc<Config>) {
             }
         }
     });
+}
+
+/// Hash of the page assets. A new version means a new URL, which bypasses any browser cache,
+/// including copies cached before the server sent Cache-Control headers.
+fn asset_version() -> String {
+    let mut hasher = DefaultHasher::new();
+    for path in ["static/share.js", "static/share.css", "static/vendor/diff.min.js"] {
+        std::fs::read(path).unwrap_or_default().hash(&mut hasher);
+    }
+    format!("{:x}", hasher.finish())
 }
 
 async fn index() -> &'static str {
